@@ -16,13 +16,13 @@ and **Projects (if the list is not available)**.
 
 ## Project tab
 
-A project opens in its own tab: **Overview**, **Workloads**,
-**Pods**, **Network**, **Configuration**, **Storage**,
-**Events** and **Quotas**. Glafira asks the cluster what you may read in the project
+A project opens in its own tab: **Overview**, **Workloads**, **Pods**,
+**Network**, **Configuration**, **Storage**, **Events**,
+**Resources** and **Quotas**. Glafira asks the cluster what you may read in the project
 and hides the subtabs you have no rights for. The answer is kept for 5 minutes; the tab asks again every 5 minutes and
-when you press **Refresh** on the overview, so a subtab hidden by rights that changed comes back. The
-overview shows the pods by phase and the problem pods, the workloads that are not fine (and the kinds of workloads you
-may not read, with the reason), the quotas used by 90 % or more and the `Warning` events of the last hour.
+when you press **Refresh** on the overview, so a subtab hidden by rights that changed comes back. The overview
+shows the pods by phase and the problem pods, the workloads that are not fine (and the kinds of workloads you may not
+read, with the reason), the quotas used by 90 % or more and the `Warning` events of the last hour.
 
 <a id="watch"></a>
 
@@ -58,7 +58,9 @@ the pods of an indexed Job, Jobs created from a CronJob by hand and the children
 about 46 characters are not included. YAML shows the object as `kubectl get -o yaml` does, but without `managedFields`,
 without the annotations that copy the whole object (`kubectl.kubernetes.io/last-applied-configuration` and the like) and
 without the private key of a Route; the values of environment variables with secret-looking names (PASSWORD, TOKEN,
-KEY…) are replaced by `***`.
+KEY…) are replaced by `***`. **Resources** shows the usage and the recommendation of requests and
+limits, and the buttons on the overview change resources and replicas, restart the workload and set the HPA bounds
+(see [Resources and changes](resources-changes.md#workload)).
 
 <a id="network"></a>
 

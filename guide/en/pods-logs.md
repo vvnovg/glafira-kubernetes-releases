@@ -24,6 +24,8 @@ requests and limits and the environment variables — names and sources only (a 
 Secret key, a field), never the values. **Events** and YAML are there too. YAML shows the object
 without `managedFields` and without the annotations that copy the whole object; the values of environment variables
 with secret-looking names (PASSWORD, TOKEN, KEY…) are replaced by `***`, other values are shown.
+**Resources** shows the current CPU and memory usage per container; **Delete pod**
+on the overview deletes the pod (see [Resources and changes](resources-changes.md#changes)).
 
 <a id="logs"></a>
 

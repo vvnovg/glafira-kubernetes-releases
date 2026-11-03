@@ -23,8 +23,9 @@ it. The result is kept until the next check.
 ## What is checked
 
 - Cluster and nodes: the API server is not ready (`/readyz`), on OpenShift — ClusterOperators and MachineConfigPools
-  are not healthy, the update is failing; a node is not ready, under pressure (`MemoryPressure`, `DiskPressure`,
-  `PIDPressure`), almost fully requested by pods (over 90%) or cordoned.
+  are not healthy, the update is failing, on DropApp — Components and Tools have failed, DropApp nodes or IngressTLS
+  certificates are not ready (see [Platform V DropApp](dropapp.md#overview)); a node is not ready, under pressure
+  (`MemoryPressure`, `DiskPressure`, `PIDPressure`), almost fully requested by pods (over 90%) or cordoned.
 - Pods: restart loops (`CrashLoopBackOff` or exiting with an error between restarts), an image cannot be pulled,
   `Pending` for more than 5 minutes, `OOMKilled` in the last day, frequent restarts. The pods of one workload make one
   finding with a list of pods.
@@ -35,6 +36,10 @@ it. The result is kept until the next check.
   not programmed.
 - Quotas, storage and scaling: a quota used at 90% or more, a PVC lost or waiting for a volume for more than 5
   minutes, an HPA at its maximum or unable to scale.
+- Resources over the last day from the metrics history (see [Resources and changes](resources-changes.md#source)): CPU
+  throttling above 25 %, memory near the limit (90 % or more), requests far above the usage. The pods of the Jobs of a
+  CronJob count for the CronJob. Without a history source, or when the source cannot be chosen or answers "not found",
+  these rules do not run and the check is marked partial.
 
 <a id="severity"></a>
 
@@ -55,7 +60,7 @@ On the **Findings** tab, findings are grouped by rule; each has an explanation a
 project. The object link opens its tab: the workload, the pod, the nodes or the project.
 
 A badge with a number — on the **Findings** item and on projects in the connection tree, in the workload
-and pod tables — shows how many findings and open LLM notes with severity **Critical** or
+and pod tables — shows how many findings, open LLM notes and proposals with severity **Critical** or
 **Warning** concern the object. Point at the badge to see their titles. A pod screen also shows
 the findings of its workload that mention this pod.
 
@@ -79,6 +84,24 @@ formatting or links.
 - **Resolved** and **Not relevant** close a note; closed notes are kept in a collapsed section.
 - **Delete** deletes a note, **Delete all LLM notes** deletes all notes of the connection.
 - A note is deleted automatically 7 days after it was created. A connection can have at most 200 open notes.
+
+<a id="proposals"></a>
+
+## LLM proposals
+
+The assistant can propose a change: container resources, replicas, restart or HPA bounds (not pod deletion). Glafira
+checks a proposal by reading the cluster — the object and the containers exist, the values parse, `limits` are not below
+`requests`, the values are within the `LimitRange` bounds; otherwise the proposal is refused. Scaling a workload that an
+HPA scales is refused too, with advice to propose HPA bounds. The quota room, scaling to 0 and an HPA, `LimitRange` or
+quota list that could not be read come back to the assistant as warnings, and the proposal is created: the form checks
+everything again when you apply it. Proposals are shown in **LLM proposals** and on the object screens.
+
+- **Open in form** opens the change form with the fields filled in (see
+  [Resources and changes](resources-changes.md#proposals)); after it is applied the proposal is marked "applied" or
+  "applied with edits", and the assistant sees it. On a read-only connection the button is disabled.
+- **Reject** — with an optional reason the assistant sees; **Reopen** brings the
+  proposal back. The assistant can withdraw its own proposal.
+- A proposal of any status is deleted 7 days after it was created; a connection has at most 50 open ones.
 
 <a id="with-llm"></a>
 

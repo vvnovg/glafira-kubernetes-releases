@@ -22,6 +22,9 @@ Use the address of the API server, as in `oc login` or the `server` of a kubecon
 - **Browser** — like `oc login --web`: Glafira opens the OpenShift sign-in page in your browser and receives the token
   after you sign in. Use **Sign in via browser** on the connection tab. This works only on OpenShift: other
   clusters have no OpenShift OAuth server, and the sign-in fails with a hint.
+- **OIDC** — sign-in via browser into the OIDC provider the API server trusts: Dex on Platform V DropApp, Keycloak or
+  Dex on any cluster with the `--oidc-*` flags. Glafira opens the provider page and receives an ID token after you sign
+  in. Use **Sign in via OIDC** on the connection tab; see [Sign-in via OIDC](connections.md#oidc).
 - **Token** — paste the output of `oc whoami -t` or a service account token.
 - **Client certificate** — a certificate and a key in PEM format, for example from the installer kubeconfig.
 - **Exec plugin** — a command that issues credentials, as in kubeconfig: `aws eks get-token`, `aws-iam-authenticator`,
@@ -32,6 +35,65 @@ OpenShift tokens usually expire after 24 hours. When the session expires, the co
 or to paste a new token. If sign-in via browser is not available on an OpenShift cluster, use
 **Get a token on the cluster page**: it opens the token page of the cluster; copy the token from it and paste it. Other
 clusters have no such page and no such button: paste a service account token, for example from `kubectl create token`.
+For a connection with the token sign-in method on an OpenShift cluster, the connection tab also offers
+**Sign in via browser**: the new token is saved to the connection like a pasted one. If the token has
+expired, the tree under **Projects** shows **Sign in again** instead of **Retry**: it
+connects again and opens the connection tab with the ways to sign in.
+
+<a id="oidc"></a>
+
+## Sign-in via OIDC
+
+**OIDC sign-in (Dex)** needs the provider and the client the API server is configured with (its
+`--oidc-issuer-url` and `--oidc-client-id`):
+
+| Field | Default | Note |
+|---|---|---|
+| **Issuer URL** | — | `https://` address of the issuer, as `--oidc-issuer-url`; on DropApp `https://auth.<cluster>.<domain>` |
+| **Client ID** | `dapp` | the client of DropApp |
+| **Client secret** | empty | kept in the secret store; empty for a public client; hidden until **Show** |
+| **Scopes** | `openid email groups profile offline_access` | `openid` is required; `groups` gives the rights of your groups in the cluster, `offline_access` gives a refresh token |
+| **Issuer CA (PEM)** | empty | the CA of the issuer certificate if neither the system store nor **Trusted CA** trusts it; it is added to them |
+
+After saving, click **Sign in via OIDC** on the connection tab. Glafira reads
+`<issuer>/.well-known/openid-configuration` (the issuer in the answer must match the field) and opens the provider page
+in the browser; the wait lasts up to 5 minutes and can be cancelled. The provider returns you to
+`http://localhost:8000`, or to `http://localhost:18000` if port 8000 is busy: these are the addresses of kubelogin, and
+the client must allow them as redirect URIs. If both ports are busy, close kubelogin or the program that holds them.
+Glafira sends the ID token to the API server, as kubelogin does. The ID token and the refresh token are kept in the
+secret store. The provider must advertise `https://` sign-in and token addresses: an `http://` address is refused
+(“insecure (http) endpoint”); only a local test issuer on `127.0.0.1` or `localhost` may use `http://` addresses there.
+
+The tokens belong to the issuer and the client: if you change **Issuer URL**,
+**Client ID** or **Issuer CA (PEM)**, saving deletes them, and you sign in
+again. Import of a settings file with such a change warns about it and also deletes the client secret: enter it again. Import that switches a connection away from OIDC (or to OIDC) also warns and
+deletes the saved OIDC tokens and client secret.
+
+The connection tab shows **Token valid until** from the `exp` of the ID token and warns an hour
+before it expires. When the token has less than a minute left, Glafira reconnects at the next request to the cluster
+and gets a new token with the refresh token, without the browser. Without a refresh token (the scopes have no
+`offline_access`), or if the provider refuses the refresh, click **Sign in via OIDC** again.
+**Test connection** uses only a saved token with more than a minute left and does not refresh it; otherwise
+it asks you to sign in. With a changed issuer, client ID or issuer CA in the unsaved form it does not use the saved
+token at all: save the connection and sign in.
+
+Import from kubeconfig (see [below](connections.md#kubeconfig)) recognizes a context with the exec plugin
+`kubectl oidc-login get-token` or `kubelogin get-token` and `--oidc-issuer-url` and offers two ways:
+**Sign in via browser (OIDC)** (the default) and **exec plugin**. With OIDC the fields come from the plugin
+arguments: `--oidc-issuer-url`, `--oidc-client-id` (none — `dapp`), `--oidc-client-secret` (to the secret store; the
+preview shows only that there is one), the scopes (`openid`, every `--oidc-extra-scope` and `offline_access`; none —
+the defaults above) and the issuer CA from `--certificate-authority-data` or the file in `--certificate-authority` (a
+relative path counts from the kubeconfig folder). A CA file that cannot be read, is not a PEM certificate, also
+contains a private key, is larger than 1 MiB or is not a regular file is skipped with a warning: the connection is
+imported without the CA, paste it into the form. The plugin is not run. `offline_access` is added even if the plugin
+did not ask for it: without it the provider gives no refresh token. If the exec variant is unavailable (the command
+is not found, its `apiVersion` is unknown, your organization forbids exec plugins), the dialog says why, and OIDC
+stays available.
+
+Sign-in via OIDC differs from the OpenShift sign-in via browser: it goes to an external provider, not to the OAuth
+server of the cluster, so it works on any platform; the return port is fixed (8000 or 18000) instead of a random one;
+the connection needs the issuer and the client; the token is refreshed with the refresh token instead of a new sign-in
+when it expires. Export does not write the client secret and the tokens.
 
 <a id="exec"></a>
 
@@ -86,16 +148,18 @@ import copies the real ones into the connection. Tick **Allow Glafira to run thi
 confirmed: the tick confirms the line exactly as shown. If the launch line in the kubeconfig file changes after the
 preview, the changed line is imported unconfirmed, and the connection form asks you to confirm it. Commands outside the
 allowed list, forbidden environment variables and `auth-provider` contexts are not supported: the preview explains
-why.
+why. For a context with `kubectl oidc-login` or `kubelogin get-token`, the dialog offers sign-in via OIDC instead of
+the plugin (see [Sign-in via OIDC](connections.md#oidc)).
 
 <a id="platform"></a>
 
 ## Platform
 
 **Platform** is detected on connection: a cluster with the `config.openshift.io` API group is
-OpenShift (OCP or OKD), any other is Kubernetes, with the distribution if Glafira recognizes it (EKS, GKE, AKS,
-Rancher, Deckhouse, k3s, RKE2). Platform V DropApp works as Kubernetes for now. What Glafira shows depends on the API
-groups, not on the platform: Route, projects and Gateway API appear wherever the cluster has them.
+OpenShift (OCP or OKD), a cluster with `config.dropapp.ru` is Platform V DropApp (see
+[Platform V DropApp](dropapp.md#detection)), any other is Kubernetes, with the distribution if Glafira recognizes it
+(EKS, GKE, AKS, Rancher, Deckhouse, k3s, RKE2). What Glafira shows depends on the API groups, not on the platform:
+Route, projects and Gateway API appear wherever the cluster has them.
 
 <a id="tls"></a>
 
@@ -104,6 +168,24 @@ groups, not on the platform: Route, projects and Gateway API appear wherever the
 **Trusted CA**: the system certificate store, or only the listed certificates (as `certificate-authority`
 in kubeconfig). The mode without certificate verification is insecure; your organization may forbid it.
 **Proxy**: the system proxy (`HTTPS_PROXY` and `NO_PROXY`), no proxy, or an explicit address.
+
+<a id="metrics"></a>
+
+## Metrics
+
+**Metrics** — where Glafira takes the usage history for the Resources tabs and the check rules from
+(see [Resources and changes](resources-changes.md#source)). **Automatic** looks for Thanos
+Querier on OpenShift, for VictoriaMetrics on DropApp (see [Platform V DropApp](dropapp.md#metrics)) and for Prometheus
+through the API server proxy on other clusters, and without them takes the current values from `metrics.k8s.io`. **Own Thanos Querier** and
+**Own Prometheus** are your own address (for example, a tenancy endpoint your administrators
+opened): **Source address**, **Source authorization** (the connection token, your own token
+or no authorization) and **Source CA**. A tenancy endpoint answers only within a project, so your
+own Thanos is checked in one of your projects: the first favorite, otherwise the first one listed manually, otherwise
+the first project of the cluster. Glafira does not follow redirects of the metrics source. Your own source is not
+replaced by another: if it does not respond, the Resources tabs say why. An `http://` address is allowed only without
+authorization. Your own token is kept in the system keychain. The metrics setting stays on this computer: export does
+not write it. The connection test shows the **Metrics** step: which source is chosen and why
+the others did not fit; without a source the step is a warning, not an error.
 
 <a id="rights"></a>
 
@@ -115,6 +197,12 @@ operators). If the cluster does not let you list projects, enter them in
 shown and the projects from the connection's fields: start typing a name and pick it with the arrows and Enter or a
 click.
 
+Glafira learns your user name and groups from the cluster: on Kubernetes 1.27+ and OpenShift 4.14+ with a
+`SelfSubjectReview` request, on older OpenShift the way `oc whoami` does (`users/~`; the groups are often missing
+there: that answer usually does not list them). If the cluster reports neither (Kubernetes older than 1.27 without
+OpenShift), the **Sign-in** step of the connection test passes with a note that the name is
+unknown, and **Signed in as** on the connection tab shows “unknown”.
+
 <a id="overview"></a>
 
 ## Cluster overview
@@ -125,9 +213,11 @@ with the reason), ready nodes by role, the number of projects, the Ingress class
 classes. On OpenShift it adds the version (during an update — the last completed one, and the update in progress
 separately), the update channel and the available updates, the infrastructure, the web console (a link only for an
 http or https address), the cluster operators that are not fine (**Show all** lists every
-one) and the machine config pools (ROSA HCP has none — a dash). A part you may not read shows a dash (—) with the
-reason; the rest is shown. On OpenShift the tab also shows until when the sign-in token is valid and warns an hour
-before it expires; the warning appears on time even if the tab stays open, and once the token has expired,
+one) and the machine config pools (ROSA HCP has none — a dash). On DropApp it adds the cluster name and version, the
+components and tools that are not fine, the DropApp nodes and the IngressTLS certificates (see
+[Platform V DropApp](dropapp.md#overview)). A part you may not read shows a dash (—) with the reason; the rest is
+shown. On OpenShift and with sign-in via OIDC the tab also shows until when the sign-in token is valid and warns an
+hour before it expires; the warning appears on time even if the tab stays open, and once the token has expired,
 **Reconnect** is next to it.
 
 <a id="nodes"></a>
@@ -143,7 +233,8 @@ conditions, taints, capacity and allocatable resources, addresses and labels.
 ## Environments and read-only
 
 **Environment** sets the color of the connection. A new `prod` connection is
-**Read-only**: Glafira will not change anything in the cluster through it.
+**Read-only**: Glafira will not change anything in the cluster through it. If you clear the box, every change
+on a prod connection requires typing its name (see [Resources and changes](resources-changes.md#changes)).
 
 <a id="llm"></a>
 
@@ -151,10 +242,14 @@ conditions, taints, capacity and allocatable resources, addresses and labels.
 
 **LLM access (MCP)** decides what an LLM assistant connected over MCP sees: **Off**
 (the default) — the connection does not exist for it; **Metadata only** — objects, statuses,
-events and quotas without the values of Secrets, ConfigMaps and environment variables. **Projects for the LLM**
-narrows the access down to the listed projects; the assistant sees the cluster and the nodes if you can read them.
-Both settings stay on this computer: export does not write them, and import does not change them for connections you
-already have. More in [LLM assistants (MCP)](llm-mcp.md#what-llm-sees).
+events and quotas without the values of Secrets, ConfigMaps and environment variables;
+**Metadata and logs** — also pod logs and the values of environment variables and ConfigMaps, masked
+(Secret values never). For this level, **Fields to mask** sets the names whose values are hidden: the
+standard list or your own. If your organization's policy forbids logs for LLM assistants, the level is unavailable.
+**Projects for the LLM** narrows the access down to the listed projects; the assistant sees the cluster and
+the nodes if you can read them. These settings stay on this computer: export does not write them, and import does not
+change them for connections you already have. More in [LLM assistants (MCP)](llm-mcp.md#what-llm-sees) and
+[Logs](llm-mcp.md#logs).
 
 <a id="folders"></a>
 
